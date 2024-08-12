@@ -1,0 +1,21 @@
+{
+  "name": "aca-async-http",
+  "version": "1.0.0",
+  "description": "```bash RESOURCE_GROUP_NAME=aca-async-http-api COSMOS_DB_ACCOUNT_NAME=aca-async-http-api LOCATION=westus",
+  "main": "http-server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node http-server.js",
+    "start:job": "node processor-job.js"
+  },
+  "author": "Anthony Chu <anthony@anthonychu.ca>",
+  "license": "MIT",
+  "dependencies": {
+    "@azure/arm-appcontainers": "^2.1.0",
+    "@azure/cosmos": "^4.1.0",
+    "@azure/identity": "^4.4.1",
+    "@fastify/static": "^7.0.4",
+    "fastify": "^4.28.1"
+  },
+  "type": "module"
+}
