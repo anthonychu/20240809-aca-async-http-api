@@ -17,8 +17,6 @@ const orderResource = orderItem.resource
 
 if (orderResource === undefined) {
     console.error('Order not found')
-    orderResource.status = 'failed'
-    await orderItem.item.replace(orderResource)
     process.exit(1)
 }
 
