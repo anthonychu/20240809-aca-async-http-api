@@ -1,10 +1,10 @@
-import Fastify from 'fastify'
-import { DefaultAzureCredential, logger } from '@azure/identity'
-import { CosmosClient } from '@azure/cosmos'
-import { randomUUID } from 'crypto'
-import fastifyStatic from '@fastify/static'
-import path from 'node:path'
 import { ContainerAppsAPIClient } from '@azure/arm-appcontainers'
+import { CosmosClient } from '@azure/cosmos'
+import { DefaultAzureCredential } from '@azure/identity'
+import fastifyStatic from '@fastify/static'
+import { randomUUID } from 'crypto'
+import Fastify from 'fastify'
+import path from 'node:path'
 
 const credential = new DefaultAzureCredential()
 const cosmosClient = new CosmosClient({
@@ -33,6 +33,12 @@ fastify.post('/orders', async (request, reply) => {
         order: request.body,
     })
 
+    await startProcessorJobExecution(orderId)
+
+    reply.code(202).header('Location', '/orders/status/' + orderId).send()
+})
+
+async function startProcessorJobExecution(orderId) {
     const { template: processorJobTemplate } = await containerAppsClient.jobs.get(resourceGroupName, processorJobName)
     const environmentVariables = processorJobTemplate.containers[0].env
     environmentVariables.push({ name: 'ORDER_ID', value: orderId })
@@ -44,9 +50,7 @@ fastify.post('/orders', async (request, reply) => {
     })
 
     console.log(`Job ${jobExecution.name} started`)
-
-    reply.code(202).header('Location', '/orders/status/' + orderId).send()
-})
+}
 
 fastify.get('/orders/status/:orderId', async (request, reply) => {
     const { orderId } = request.params

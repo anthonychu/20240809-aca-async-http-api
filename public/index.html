@@ -14,6 +14,9 @@
         <div id="buttonDiv">
             <button type="button" class="btn btn-primary">Place order</button>
         </div>
+        <div id="spinnerDiv" style="display: none;">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
         <div id="messages" style="white-space: pre;"></div>
         <div class="card" id="orderCard" style="display: none;">
             <div class="card-body">
@@ -30,74 +33,83 @@
 
         document.querySelector('button').addEventListener('click', async () => {
             document.querySelector('#buttonDiv').style.display = 'none'
+            document.querySelector('#spinnerDiv').style.display = 'block'
 
-            const logger = (message) => {
-                messagesDiv.innerHTML += message
-            }
-
-            const order = await placeOrderAndWait({
-                "customer": "Contoso",
-                "items": [
-                    {
-                        "name": "Apple",
-                        "quantity": 5
-                    },
-                    {
-                        "name": "Banana",
-                        "quantity": 3
-                    },
-                ],
-            }, logger)
-
-            if (!order) {
-                return
-            }
-
-            document.querySelector('#order').innerHTML = JSON.stringify(order, null, 2)
-            document.querySelector('#orderCard').style.display = 'block'
-            messagesDiv.style.display = 'none'
-        })
-
-        async function placeOrderAndWait(order, logger) {
-            const response = await fetch('/orders', {
+            const order = await fetchAndWait('/orders', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(order)
+                body: JSON.stringify({
+                    "customer": "Contoso",
+                    "items": [
+                        {
+                            "name": "Apple",
+                            "quantity": 5
+                        },
+                        {
+                            "name": "Banana",
+                            "quantity": 3
+                        },
+                    ],
+                })
+            }, async ({ response, retryAfter }) => {
+                const { status } = await response.json()
+                const requestUrl = response.url
+                messagesDiv.innerHTML += `Order status: ${status}; retrying in ${retryAfter} seconds (${requestUrl})\n`
             })
-            
-            if (response.status !== 202) {
-                logger(`Something went wrong\nResponse: ${await response.text()}\n`)
-                return
+
+            document.querySelector('#order').innerHTML = JSON.stringify(order, null, 2)
+            document.querySelector('#orderCard').style.display = 'block'
+            messagesDiv.style.display = 'none'
+            document.querySelector('#spinnerDiv').style.display = 'none'
+        })
+
+        async function fetchAndWait() {
+            const input = arguments[0]
+            let init = arguments[1]
+            let onStatusPoll = arguments[2]
+            // if arguments[1] is not a function
+            if (typeof init === 'function') {
+                init = undefined
+                onStatusPoll = arguments[1]
             }
-            
+            onStatusPoll = onStatusPoll || (async () => {})
+
+            const response = await fetch(input, init)
+
+            if (response.status !== 202) {
+                throw new Error(`Something went wrong\nResponse: ${await response.text()}\n`)
+            }
+
             const responseOrigin = new URL(response.url).origin
             let statusLocation = response.headers.get('Location')
             // if the Location header is not an absolute URL, construct it
             statusLocation = new URL(statusLocation, responseOrigin).href
 
-            logger("Order accepted, waiting for completion...\n")
-            logger(`Status location: ${statusLocation}\n`)
-
+            // poll the status endpoint until it's redirected to the final result
             while (true) {
                 const response = await fetch(statusLocation, {
                     redirect: 'follow'
                 })
-                const data = await response.json()
-
+                
                 if (response.status !== 200 && !response.redirected) {
-                    logger(`Something went wrong\nResponse: ${JSON.stringify(data, null, 2)}\n`)
-                    return
+                    const data = await response.json()
+                    throw new Error(`Something went wrong\nResponse: ${JSON.stringify(data, null, 2)}\n`)
                 }
 
+                // redirected, return final result and stop polling
                 if (response.redirected) {
-                    logger(`Order completed\n`)
+                    const data = await response.json()
                     return data
                 }
 
                 const retryAfter = parseInt(response.headers.get('Retry-After')) || 10
-                logger(`Order status: ${data.status}; retrying in ${retryAfter} seconds\n`)
+
+                await onStatusPoll({
+                    response,
+                    retryAfter,
+                })
 
                 await new Promise(resolve => setTimeout(resolve, retryAfter * 1000))
             }
